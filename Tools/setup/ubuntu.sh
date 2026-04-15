@@ -46,6 +46,7 @@ fi
 
 # script directory
 DIR=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
+PX4_ROOT=$( cd "${DIR}/../.." && pwd )
 
 # check requirements.txt exists (script not run in source tree)
 REQUIREMENTS_FILE="requirements.txt"
@@ -84,6 +85,7 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get -y --quiet --no-install-recommends i
 	ccache \
 	cmake \
 	cppcheck \
+	curl \
 	file \
 	g++ \
 	gcc \
@@ -108,19 +110,28 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get -y --quiet --no-install-recommends i
 
 # Python3 dependencies
 echo
-echo "[ubuntu.sh] Installing PX4 Python3 dependencies"
-PYTHON_VERSION=$(python3 --version 2>&1 | awk '{print $2}')
-REQUIRED_VERSION="3.11"
-if [[ "$(printf '%s\n' "$REQUIRED_VERSION" "$PYTHON_VERSION" | sort -V | head -n1)" == "$REQUIRED_VERSION" ]]; then
-	python3 -m pip install --break-system-packages -r ${DIR}/requirements.txt
-else
-	if [ -n "$VIRTUAL_ENV" ]; then
-		# virtual environments don't allow --user option
-		python -m pip install -r ${DIR}/requirements.txt
-	else
-		python3 -m pip install --user -r ${DIR}/requirements.txt
-	fi
+echo "[ubuntu.sh] Installing PX4 Python3 dependencies in a uv virtual environment"
+
+if ! command -v uv >/dev/null 2>&1; then
+	echo "[ubuntu.sh] Installing uv"
+	curl -LsSf https://astral.sh/uv/install.sh | sh
+	export PATH="${HOME}/.local/bin:${PATH}"
 fi
+
+if ! command -v uv >/dev/null 2>&1; then
+	echo "[ubuntu.sh] FAILED: uv is not available on PATH after installation."
+	return 1
+fi
+
+PX4_VENV="${PX4_ROOT}/.venv"
+uv venv --python python3 "${PX4_VENV}"
+
+# shellcheck source=/dev/null
+source "${PX4_VENV}/bin/activate"
+
+uv pip install --python "${PX4_VENV}/bin/python" -r "${DIR}/requirements.txt"
+
+echo "[ubuntu.sh] PX4 Python virtual environment ready at ${PX4_VENV}"
 
 # NuttX toolchain (arm-none-eabi-gcc)
 if [[ $INSTALL_NUTTX == "true" ]]; then
